@@ -242,7 +242,7 @@ def apply_se3_augmentation(pcd,
     action_gripper_trans = action_gripper_pose[:, :3]
     action_gripper_quat_wxyz = torch.cat((action_gripper_pose[:, 6].unsqueeze(1),
                                           action_gripper_pose[:, 3:6]), dim=1)
-    action_gripper_rot = torch3d_tf.quaternion_to_matrix(action_gripper_quat_wxyz)
+    action_gripper_rot = quaternion_to_matrix(action_gripper_quat_wxyz)
     action_gripper_4x4 = identity_4x4.detach().clone()
     action_gripper_4x4[:, :3, :3] = action_gripper_rot
     action_gripper_4x4[:, 0:3, 3] = action_gripper_trans
@@ -278,7 +278,7 @@ def apply_se3_augmentation(pcd,
         yaw = utils.rand_discrete((bs, 1),
                                   min=-yaw_aug_steps,
                                   max=yaw_aug_steps) * np.deg2rad(rot_aug_resolution)
-        rot_shift_3x3 = torch3d_tf.euler_angles_to_matrix(torch.cat((roll, pitch, yaw), dim=1), "XYZ")
+        rot_shift_3x3 = euler_angles_to_matrix(torch.cat((roll, pitch, yaw), dim=1), "XYZ")
         rot_shift_4x4 = identity_4x4.detach().clone()
         rot_shift_4x4[:, :3, :3] = rot_shift_3x3
 
@@ -288,7 +288,7 @@ def apply_se3_augmentation(pcd,
 
         # convert transformation matrix to translation + quaternion
         perturbed_action_trans = perturbed_action_gripper_4x4[:, 0:3, 3].cpu().numpy()
-        perturbed_action_quat_wxyz = torch3d_tf.matrix_to_quaternion(perturbed_action_gripper_4x4[:, :3, :3])
+        perturbed_action_quat_wxyz = matrix_to_quaternion(perturbed_action_gripper_4x4[:, :3, :3])
         perturbed_action_quat_xyzw = torch.cat([perturbed_action_quat_wxyz[:, 1:],
                                                 perturbed_action_quat_wxyz[:, 0].unsqueeze(1)],
                                                dim=1).cpu().numpy()
