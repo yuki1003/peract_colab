@@ -2,10 +2,9 @@ import functools
 import numpy as np
 import torch
 from helpers import utils
-from pytorch3d import transforms as torch3d_tf
 
 
-# Function from torch3d
+# Function from pytorch3d
 def quaternion_to_matrix(quaternions):
     """
     Convert rotations given as quaternions to rotation matrices.
@@ -36,7 +35,36 @@ def quaternion_to_matrix(quaternions):
     )
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
-# Functions frpyom torch3d
+# Function from pytorch3d
+def _sqrt_positive_part(x):
+    """
+    Returns torch.sqrt(torch.max(0, x))
+    but with a zero subgradient where x is 0.
+    """
+    ret = torch.zeros_like(x)
+    positive_mask = x > 0
+    ret[positive_mask] = torch.sqrt(x[positive_mask])
+    return ret
+
+# Function from pytorch3d
+def _copysign(a, b):
+    """
+    Return a tensor where each element has the absolute value taken from the,
+    corresponding element of a, with sign taken from the corresponding
+    element of b. This is like the standard copysign floating-point operation,
+    but is not careful about negative 0 and NaN.
+
+    Args:
+        a: source tensor.
+        b: tensor whose signs will be used, of the same shape as a.
+
+    Returns:
+        Tensor of the same shape as a with the signs of b.
+    """
+    signs_differ = (a < 0) != (b < 0)
+    return torch.where(signs_differ, -a, a)
+
+# Function from pytorch3d
 def matrix_to_quaternion(matrix):
     """
     Convert rotations given as rotation matrices to quaternions.
@@ -61,7 +89,7 @@ def matrix_to_quaternion(matrix):
     o3 = _copysign(z, matrix[..., 1, 0] - matrix[..., 0, 1])
     return torch.stack((o0, o1, o2, o3), -1)
 
-# Functions frpyom torch3d
+# Function from pytorch3d
 def euler_angles_to_matrix(euler_angles, convention: str):
     """
     Convert rotations given as Euler angles in radians to rotation matrices.
@@ -86,7 +114,7 @@ def euler_angles_to_matrix(euler_angles, convention: str):
     matrices = map(_axis_angle_rotation, convention, torch.unbind(euler_angles, -1))
     return functools.reduce(torch.matmul, matrices)
 
-# Functions frpyom torch3d
+# Function from pytorch3d
 def _axis_angle_rotation(axis: str, angle):
     """
     Return the rotation matrices for one of the rotations about an axis
