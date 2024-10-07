@@ -320,6 +320,15 @@ class UniformReplayBuffer(ReplayBuffer):
                 self._store[TERMINAL] = term
                 # self._store[TERMINAL][cursor] = kwargs[TERMINAL]
 
+                ## reduce size (suggested: https://github.com/peract/peract?tab=readme-ov-file#the-training-is-too-slow-and-the-replay-pickle-files-take-up-too-much-space-what-should-i-do-about-this)
+                for k, v in kwargs.items():
+                    try:
+                        if 'float' in v.dtype.name and v.size > 100:
+                            v = v.astype(np.float16)
+                            kwargs[k] = v
+                    except:
+                        pass
+
                 with open(join(self._save_dir, '%d.replay' % cursor), 'wb') as f:
                     pickle.dump(kwargs, f)
                 # If first add, then pad for correct wrapping
