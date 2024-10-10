@@ -79,6 +79,8 @@ def extract_obs(obs: Observation,
     obs_dict = {k: v for k, v in obs_dict.items()
                 if k not in REMOVE_KEYS}
     
+    obs_dict['ignore_collisions'] = np.array(obs_dict['ignore_collisions'], dtype=float)
+
     if not channels_last:
         # swap channels from last dim to 1st dim
         obs_dict = {k: np.transpose(
