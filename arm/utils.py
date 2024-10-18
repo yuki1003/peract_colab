@@ -42,6 +42,50 @@ def point_to_voxel_index(
     return voxel_indicy
 
 
+def voxel_index_to_point(
+        voxel_index: np.ndarray,
+        voxel_size: np.ndarray,
+        coord_bounds: np.ndarray):
+    """
+    Convert a voxel index back into a point in the world coordinate system.
+    
+    Args:
+        voxel_index (np.ndarray): The voxel index (3D indices [i, j, k]) in the voxel grid.
+        voxel_size (np.ndarray): The size of the voxel grid (number of voxels in each axis).
+        coord_bounds (np.ndarray): The world coordinate bounds of the grid ([x_min, y_min, z_min, x_max, y_max, z_max]).
+    
+    Returns:
+        np.ndarray: The point in world coordinates corresponding to the voxel index.
+    """
+    # Extract the bounding box mins and maxs from the coord_bounds
+    bb_mins = np.array(coord_bounds[0:3])  # Minimum (x_min, y_min, z_min)
+    bb_maxs = np.array(coord_bounds[3:])   # Maximum (x_max, y_max, z_max)
+    
+    # Calculate the bounding box ranges
+    bb_ranges = bb_maxs - bb_mins
+    
+    # Compute the resolution of each voxel (size of each voxel in world units)
+    res = bb_ranges / (np.array([voxel_size] * 3) + 1e-12)
+    
+    # Convert the voxel index back to a point in the world space
+    point = bb_mins + (voxel_index + 0.5) * res
+    
+    return point
+
+
+def point_to_pixel_index(
+        point: np.ndarray,
+        extrinsics: np.ndarray,
+        intrinsics: np.ndarray):
+    point = np.array([point[0], point[1], point[2], 1])
+    world_to_cam = np.linalg.inv(extrinsics)
+    point_in_cam_frame = world_to_cam.dot(point)
+    px, py, pz = point_in_cam_frame[:3]
+    px = 2 * intrinsics[0, 2] - int(-intrinsics[0, 0] * (px / pz) + intrinsics[0, 2])
+    py = 2 * intrinsics[1, 2] - int(-intrinsics[1, 1] * (py / pz) + intrinsics[1, 2])
+    return px, py
+
+
 def stack_on_channel(x):
     # expect (B, T, C, ...)
     return torch.cat(torch.split(x, 1, dim=1), dim=2).squeeze(1)
@@ -76,6 +120,24 @@ def _from_trimesh_scene(
         pose, geom_name = trimesh_scene.graph[node]
         scene_pr.add(geometries[geom_name], pose=pose)
     return scene_pr
+
+
+def _create_bounding_box(scene, voxel_size, res):
+    l = voxel_size * res
+    T = np.eye(4)
+    w = 0.01
+    for trans in [[0, 0, l / 2], [0, l, l / 2], [l, l, l / 2], [l, 0, l / 2]]:
+        T[:3, 3] = np.array(trans) - voxel_size / 2
+        scene.add_geometry(trimesh.creation.box(
+            [w, w, l], T, face_colors=[0, 0, 0, 255]))
+    for trans in [[l / 2, 0, 0], [l / 2, 0, l], [l / 2, l, 0], [l / 2, l, l]]:
+        T[:3, 3] = np.array(trans) - voxel_size / 2
+        scene.add_geometry(trimesh.creation.box(
+            [l, w, w], T, face_colors=[0, 0, 0, 255]))
+    for trans in [[0, l / 2, 0], [0, l / 2, l], [l, l / 2, 0], [l, l / 2, l]]:
+        T[:3, 3] = np.array(trans) - voxel_size / 2
+        scene.add_geometry(trimesh.creation.box(
+            [w, l, w], T, face_colors=[0, 0, 0, 255]))
 
 
 def create_voxel_scene(

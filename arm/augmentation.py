@@ -218,7 +218,7 @@ def apply_se3_augmentation(pcd,
                            device):
     """ Apply SE3 augmentation to a point clouds and actions.
     :param pcd: list of point clouds [[bs, 3, H, W], ...] for N cameras
-    :param action_gripper_pose: 6-DoF pose of keyframe action [bs, 7]
+    :param action_gripper_pose: 6-DoF pose of keyframe action [bs, 7] (x,y,z,x,y,z,w)
     :param action_trans: discretized translation action [bs, 3]
     :param action_rot_grip: discretized rotation and gripper action [bs, 4]
     :param bounds: metric scene bounds of voxel grid [bs, 6]
@@ -283,7 +283,7 @@ def apply_se3_augmentation(pcd,
         rot_shift_4x4[:, :3, :3] = rot_shift_3x3
 
         # rotate then translate the 4x4 keyframe action
-        perturbed_action_gripper_4x4 = torch.bmm(action_gripper_4x4, rot_shift_4x4)
+        perturbed_action_gripper_4x4 = torch.bmm(action_gripper_4x4, rot_shift_4x4) # Matrix multiplication with batches
         perturbed_action_gripper_4x4[:, 0:3, 3] += trans_shift
 
         # convert transformation matrix to translation + quaternion
@@ -321,4 +321,8 @@ def apply_se3_augmentation(pcd,
     # apply perturbation to pointclouds
     pcd = perturb_se3(pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4, bounds)
 
-    return action_trans, action_rot_grip, pcd
+    # perturbed action_gripper_pose
+    perturbed_action_gripper_pose = np.hstack((perturbed_action_trans, perturbed_action_quat_xyzw))
+    perturbed_action_gripper_pose = torch.from_numpy(perturbed_action_gripper_pose).to(device=device)
+
+    return action_trans, action_rot_grip, pcd, perturbed_action_gripper_pose
