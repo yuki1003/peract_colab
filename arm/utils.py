@@ -33,9 +33,9 @@ def point_to_voxel_index(
         coord_bounds: np.ndarray):
     bb_mins = np.array(coord_bounds[0:3])
     bb_maxs = np.array(coord_bounds[3:])
-    dims_m_one = np.array([voxel_size] * 3) - 1
+    dims_m_one = np.array([voxel_size]) - 1
     bb_ranges = bb_maxs - bb_mins
-    res = bb_ranges / (np.array([voxel_size] * 3) + 1e-12)
+    res = bb_ranges / (np.array([voxel_size]) + 1e-12)
     voxel_indicy = np.minimum(
         np.floor((point - bb_mins) / (res + 1e-12)).astype(
             np.int32), dims_m_one)
@@ -167,9 +167,10 @@ def create_voxel_scene(
         rgb = np.where(np.expand_dims(show_q, -1), q_rgb, rgb)
 
     if highlight_coordinate is not None:
-        x, y, z = highlight_coordinate
-        occupancy[x, y, z] = True
-        rgb[x, y, z] = [1.0, 0.0, 0.0, highlight_alpha]
+        for highlight_coordinate_i in highlight_coordinate:
+            x, y, z = highlight_coordinate_i
+            occupancy[x, y, z] = True
+            rgb[x, y, z] = [1.0, 0.0, 0.0, highlight_alpha]
 
     if highlight_gt_coordinate is not None:
         x, y, z = highlight_gt_coordinate
@@ -202,7 +203,8 @@ def visualise_voxel(voxel_grid: np.ndarray,
                     alpha: float = 0.5,
                     render_gripper=False,
                     gripper_pose=None,
-                    gripper_mesh_scale=1.0):
+                    gripper_mesh_scale=1.0,
+                    perspective: bool = True):
     scene = create_voxel_scene(
         voxel_grid, q_attention, highlight_coordinate, highlight_gt_coordinate,
         highlight_alpha, voxel_size,
@@ -215,10 +217,17 @@ def visualise_voxel(voxel_grid: np.ndarray,
         s = _from_trimesh_scene(
             scene, ambient_light=[0.8, 0.8, 0.8],
             bg_color=[1.0, 1.0, 1.0])
-        cam = pyrender.PerspectiveCamera(
-            yfov=np.pi / 4.0, aspectRatio=r.viewport_width/r.viewport_height)
+        if perspective:
+            cam = pyrender.PerspectiveCamera(
+                yfov=np.pi / 4.0, 
+                aspectRatio=r.viewport_width/r.viewport_height)
+        else:
+            cam = pyrender.OrthographicCamera(
+                xmag=1.0, ymag=1.0)
         p = _compute_initial_camera_pose(s)
         t = Trackball(p, (r.viewport_width, r.viewport_height), s.scale, s.centroid)
+        if not perspective:
+            t.rotate(np.deg2rad(45), np.array([0.0, 1.0, 0.0]))
         t.rotate(rotation_amount, np.array([0.0, 0.0, 1.0]))
         s.add(cam, pose=t.pose)
 

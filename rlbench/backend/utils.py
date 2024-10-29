@@ -53,7 +53,7 @@ def image_to_float_array(image, scale_factor=None):
 
 # Adapted from https://github.com/stepjam/YARR/blob/main/yarr/envs/rlbench_env.py
 def extract_obs(obs: Observation,
-				cameras,
+                cameras,
                 t: int = 0,
                 prev_action = None,
                 channels_last: bool = False):

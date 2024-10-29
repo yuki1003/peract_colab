@@ -1,6 +1,7 @@
 import functools
 import numpy as np
 import torch
+import torch.nn.functional as F
 from helpers import utils
 
 
@@ -150,9 +151,9 @@ def perturb_se3(pcd,
                 bounds):
     """ Perturb point clouds with given transformation.
     :param pcd: list of point clouds [[bs, 3, N], ...] for N cameras
-    :param trans_shift_4x4: translation matrix [bs, 4, 4]
-    :param rot_shift_4x4: rotation matrix [bs, 4, 4]
-    :param action_gripper_4x4: original keyframe action gripper pose [bs, 4, 4]
+    :param trans_shift_4x4: translation matrix [bs, 4, 4], the actual translation applied on action gripper
+    :param rot_shift_4x4: rotation matrix [bs, 4, 4], the actual rotation applied on action gripper
+    :param action_gripper_4x4: original keyframe action gripper pose [bs, 4, 4], the reference point
     :param bounds: metric scene bounds [bs, 6]
     :return: peturbed point clouds
     """
@@ -162,7 +163,7 @@ def perturb_se3(pcd,
         bounds = bounds.repeat(bs, 1)
 
     perturbed_pcd = []
-    for p in pcd:
+    for p in pcd: # Per batch
         p_shape = p.shape
         num_points = p_shape[-1] * p_shape[-2]
 
@@ -204,11 +205,11 @@ def perturb_se3(pcd,
     return perturbed_pcd
 
 
-def apply_se3_augmentation(pcd,
-                           action_gripper_pose,
-                           action_trans,
-                           action_rot_grip,
-                           bounds,
+def apply_se3_augmentation(pcd, # NOTE: Augmentation to apply to
+                           action_gripper_pose, # NOTE: Augmentation to apply to
+                           action_trans, # NOTE: Only used for size
+                           action_rot_grip, # NOTE: Only used for size,
+                           bounds, # NOTE: Check if augmentation is within bounds
                            layer,
                            trans_aug_range,
                            rot_aug_range,
@@ -230,6 +231,10 @@ def apply_se3_augmentation(pcd,
     :param rot_resolution: degree increments for discretized rotations
     :param device: torch device
     :return: perturbed action_trans, action_rot_grip, pcd
+
+    NOTE: Rotation/Translation is applied on the action gripper.
+    Thereby, surrounding points (i.e. PCDs) rotate/translate along this new location.
+    This needs to be transformed back to world-coordinates.
     """
 
     # batch size
@@ -283,7 +288,7 @@ def apply_se3_augmentation(pcd,
         rot_shift_4x4[:, :3, :3] = rot_shift_3x3
 
         # rotate then translate the 4x4 keyframe action
-        perturbed_action_gripper_4x4 = torch.bmm(action_gripper_4x4, rot_shift_4x4) # Matrix multiplication with batches
+        perturbed_action_gripper_4x4 = torch.bmm(rot_shift_4x4, action_gripper_4x4) # NOTE: Matrix multiplication with batches - 
         perturbed_action_gripper_4x4[:, 0:3, 3] += trans_shift
 
         # convert transformation matrix to translation + quaternion
@@ -321,8 +326,4 @@ def apply_se3_augmentation(pcd,
     # apply perturbation to pointclouds
     pcd = perturb_se3(pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4, bounds)
 
-    # perturbed action_gripper_pose
-    perturbed_action_gripper_pose = np.hstack((perturbed_action_trans, perturbed_action_quat_xyzw))
-    perturbed_action_gripper_pose = torch.from_numpy(perturbed_action_gripper_pose).to(device=device)
-
-    return action_trans, action_rot_grip, pcd, perturbed_action_gripper_pose
+    return action_trans, action_rot_grip, pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4
