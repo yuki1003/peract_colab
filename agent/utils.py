@@ -28,7 +28,7 @@ def pcd_bbox(pose, margin, voxel_size, bounds, bs, device="cpu"):
 
     # 4x4 matrix of gripper pose
     pose_trans = pose[:, :3]
-    pose_quat_wxyz = torch.cat((pose[:, 6].unsqueeze(1),
+    pose_quat_wxyz = torch.cat((-pose[:, 6].unsqueeze(1), # NOTE: For some reason negative value gives bbox matching with CS
                                 pose[:, 3:6]), dim=1)
     pose_rot = quaternion_to_matrix(pose_quat_wxyz)
     pose_4x4_rot = identity_4x4.detach().clone() # Only orientation

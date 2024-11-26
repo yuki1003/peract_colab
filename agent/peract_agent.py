@@ -215,7 +215,7 @@ class PerceiverActorAgent():
                       bounds,
                       backprop,
                       self._rgb_augmentation,
-                      gripper_bbox_pcd, object_bbox_pcd)
+                      gripper_bbox_pcd, object_bbox_pcd) # NOTE: This is the prediction
 
 
         # one-hot expert actions
@@ -289,6 +289,27 @@ class PerceiverActorAgent():
                 'action_trans': action_trans
             }
         }
+    
+    def predict(self, replay_sample: dict):
+        
+        # metric scene bounds
+        bounds = self._coordinate_bounds
+
+        # inputs
+        proprio = stack_on_channel(replay_sample['low_dim_state'])
+        obs, pcd = _preprocess_inputs(replay_sample, self._camera_names)
+        lang_goal_embs = replay_sample['lang_goal_embs'][:, -1].float()
+
+        # Q function TODO: I think forward of Qfunction
+        q_trans, rot_grip_q, collision_q, voxel_grid \
+            = self._q(obs,
+                      proprio,
+                      pcd,
+                      lang_goal_embs,
+                      bounds)
+
+        raise NotImplementedError
+        # return q_trans, rot_grip_q # NOTE: CHECK WHAT FORMAT THIS IS? VOXELS? COORDINATES? etc.
 
     def load_weights(self, savedir: str):
         device = self._device if not self._training else torch.device('cuda:%d' % self._device)

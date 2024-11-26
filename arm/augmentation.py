@@ -288,7 +288,7 @@ def apply_se3_augmentation(pcd, # NOTE: Augmentation to apply to
         rot_shift_4x4[:, :3, :3] = rot_shift_3x3
 
         # rotate then translate the 4x4 keyframe action
-        perturbed_action_gripper_4x4 = torch.bmm(rot_shift_4x4, action_gripper_4x4) # NOTE: Matrix multiplication with batches - 
+        perturbed_action_gripper_4x4 = torch.bmm(action_gripper_4x4, rot_shift_4x4) # NOTE: Matrix multiplication with batches - 
         perturbed_action_gripper_4x4[:, 0:3, 3] += trans_shift
 
         # convert transformation matrix to translation + quaternion
@@ -325,5 +325,5 @@ def apply_se3_augmentation(pcd, # NOTE: Augmentation to apply to
 
     # apply perturbation to pointclouds
     pcd = perturb_se3(pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4, bounds)
-
+    
     return action_trans, action_rot_grip, pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4

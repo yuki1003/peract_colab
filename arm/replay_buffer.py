@@ -225,6 +225,7 @@ def fill_replay(data_path: str,
                 stopping_delta,
                 target_obj_keypoint: bool = False,
                 target_obj_use_last_kp: bool = False,
+                target_obj_is_avail: bool = False,
                 clip_model = None,
                 device = 'cpu'):
     print('Filling replay ...')
@@ -244,7 +245,7 @@ def fill_replay(data_path: str,
         episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
 
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
-        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp)
+        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
         
         for i, (obs, obs_episode_target_object) in enumerate(zip(demo,episode_target_object)): # Loop through frames of demo
             if not demo_augmentation and i > 0:
