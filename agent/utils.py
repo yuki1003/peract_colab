@@ -21,7 +21,7 @@ def _preprocess_inputs(replay_sample, cameras):
 
 def pcd_bbox(pose, margin, voxel_size, bounds, bs, device="cpu"):
 
-    bounds = np.array(bounds)
+    bounds = bounds[0].cpu().numpy()
 
     # identity matrix
     identity_4x4 = torch.eye(4).unsqueeze(0).repeat(bs, 1, 1).to(device=device)
