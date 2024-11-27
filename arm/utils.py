@@ -36,9 +36,11 @@ def point_to_voxel_index(
     dims_m_one = np.array([voxel_size]) - 1
     bb_ranges = bb_maxs - bb_mins
     res = bb_ranges / (np.array([voxel_size]) + 1e-12)
-    voxel_indicy = np.minimum(
-        np.floor((point - bb_mins) / (res + 1e-12)).astype(
-            np.int32), dims_m_one)
+    # voxel_indicy = np.minimum(
+    #     np.floor((point - bb_mins) / (res + 1e-12)).astype(
+    #         np.int32), dims_m_one)
+    voxel_indicy = np.floor((point - bb_mins) / (res + 1e-12)).astype(np.int32)
+    voxel_indicy = voxel_indicy.clip(min=0, max=dims_m_one)
     return voxel_indicy
 
 

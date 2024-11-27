@@ -12,7 +12,7 @@ from agent.utils import _preprocess_inputs, pcd_bbox
 from agent.voxel_grid import VoxelGrid
 
 from arm.optim.lamb import Lamb
-from arm.utils import stack_on_channel
+from arm.utils import discrete_euler_to_quaternion, stack_on_channel
 from arm.augmentation import apply_se3_augmentation, perturb_se3
 
 
@@ -187,8 +187,8 @@ class PerceiverActorAgent():
         gripper_bbox_pcd = None
         object_bbox_pcd = None
         if backprop and (self._rgb_augmentation.lower() == 'partial'):
-            gripper_bbox_pcd = pcd_bbox(gripper_pose, 10, self._voxel_size, self._coordinate_bounds, bs)
-            object_bbox_pcd = pcd_bbox(object_pose, 10, self._voxel_size, self._coordinate_bounds, bs)
+            gripper_bbox_pcd = pcd_bbox(gripper_pose, 10, self._voxel_size, self._coordinate_bounds, bs, self._device)
+            object_bbox_pcd = pcd_bbox(object_pose, 10, self._voxel_size, self._coordinate_bounds, bs, self._device)
 
         # SE(3) augmentation of point clouds and actions
         if backprop and self._transform_augmentation:
@@ -290,26 +290,40 @@ class PerceiverActorAgent():
             }
         }
     
-    def predict(self, replay_sample: dict):
+    def forward(self, replay_sample: dict): # Replace by obs
+
+        raise NotImplementedError
         
         # metric scene bounds
         bounds = self._coordinate_bounds
 
         # inputs
-        proprio = stack_on_channel(replay_sample['low_dim_state'])
-        obs, pcd = _preprocess_inputs(replay_sample, self._camera_names)
-        lang_goal_embs = replay_sample['lang_goal_embs'][:, -1].float()
+        proprio = stack_on_channel(replay_sample['low_dim_state']) # TODO: Can be replaced by {gripper_open, left_finger_joint, right_finger_joint, timestep} (we need from simulation and panda)
+        obs, pcd = _preprocess_inputs(replay_sample, self._camera_names) # This would be the observation
+        lang_goal_embs = replay_sample['lang_goal_embs'][:, -1].float() # This can be a static thing when initialized
 
         # Q function TODO: I think forward of Qfunction
         q_trans, rot_grip_q, collision_q, voxel_grid \
-            = self._q(obs,
-                      proprio,
-                      pcd,
-                      lang_goal_embs,
-                      bounds)
+            = self._q(obs, # NOTE: Only used for batch size (this should be only 1)
+                      proprio, # Cehck above
+                      pcd, # This is the input
+                      lang_goal_embs, # Static
+                      bounds) # Set before
+        
+        # choose best action through argmax
+        coords_indicies, rot_and_grip_indicies, ignore_collision_indicies = self._q.choose_highest_action(q_trans,
+                                                                                                          rot_grip_q,
+                                                                                                          collision_q)
 
-        raise NotImplementedError
-        # return q_trans, rot_grip_q # NOTE: CHECK WHAT FORMAT THIS IS? VOXELS? COORDINATES? etc.
+        # discrete to continuous translation action
+        res = (bounds[:, 3:] - bounds[:, :3]) / self._voxel_size
+        continuous_trans = bounds[:, :3] + res * coords_indicies.int() + res / 2
+        
+        continuous_quat = discrete_euler_to_quaternion(rot_and_grip_indicies[0][:3].detach().cpu().numpy(),
+                                                       resolution=self._rotation_resolution)
+        gripper_open = bool(rot_and_grip_indicies[0][-1].detach().cpu().numpy())
+        ignore_collision = bool(ignore_collision_indicies[0][0].detach().cpu().numpy()) # Check if this is necessary
+        return (continuous_trans, continuous_quat, gripper_open)
 
     def load_weights(self, savedir: str):
         device = self._device if not self._training else torch.device('cuda:%d' % self._device)

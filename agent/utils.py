@@ -47,7 +47,7 @@ def pcd_bbox(pose, margin, voxel_size, bounds, bs, device="cpu"):
     bbox_limits = torch.stack([
         pose_indices - margin,
         pose_indices + margin
-    ], dim=-1).clamp(min=0, max=voxel_size) # Ensure within bounds
+    ], dim=-1)#.clamp(min=0, max=voxel_size) # Ensure within bounds
 
     x_ranges = [torch.arange(bbox_limits[b, 0, 0], bbox_limits[b, 0, 1], device=device) for b in range(bs)]
     y_ranges = [torch.arange(bbox_limits[b, 1, 0], bbox_limits[b, 1, 1], device=device) for b in range(bs)]
