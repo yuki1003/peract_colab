@@ -82,7 +82,7 @@ def extract_obs(obs: Observation,
     if not channels_last:
         # swap channels from last dim to 1st dim
         obs_dict = {k: np.transpose(
-            v, [2, 0, 1]) if v.ndim == 3 else np.expand_dims(v, 0)
+            v, [2, 0, 1]) if type(v) != bool and v.ndim == 3 else np.expand_dims(v, 0)
                     for k, v in obs_dict.items()}
     else:
         # add extra dim to depth data
