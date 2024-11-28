@@ -208,6 +208,74 @@ def _add_keypoints_to_replay(
 
     replay.add_final(**obs_dict_tp1)
 
+# add individual data points to replay
+def _add_keypoint_to_replay_uniform(
+        replay: ReplayBuffer,
+        initial_obs: Observation,
+        demo: Demo,
+        episode_keypoint: int, # Only 1-keypoint
+        target_object, # New
+        cameras: List[str],
+        rlbench_scene_bounds: List[float],
+        voxel_sizes: List[int],
+        rotation_resolution: int,
+        crop_augmentation: bool,
+        kf_index: int,
+        is_terminal: bool,
+        frame_idx: int,
+        description: str = '',
+        clip_model = None,
+        device = 'cpu'):
+    prev_action = None
+    obs = initial_obs
+    
+    obs_tp1 = demo[episode_keypoint]
+    obs_tm1 = demo[max(0, episode_keypoint - 1)]
+    trans_indicies, rot_grip_indicies, ignore_collisions, action, attention_coordinates = _get_action(
+        obs_tp1, obs_tm1, rlbench_scene_bounds, voxel_sizes,
+        rotation_resolution, crop_augmentation)
+    
+    reward = float(is_terminal) * 1.0 if is_terminal else 0
+
+    obs_dict = extract_obs(obs, cameras, t=kf_index, prev_action=prev_action) # Is time an important value? What is it used for?
+
+    # Language embeddings
+    tokens = clip.tokenize([description]).numpy()
+    token_tensor = torch.from_numpy(tokens).to(device)
+    lang_feats, lang_embs = _clip_encode_text(clip_model, token_tensor)
+    obs_dict['lang_goal_embs'] = lang_embs[0].float().detach().cpu().numpy()
+
+    prev_action = np.copy(action) # action: gripper pose + open
+
+    others = {'demo': True,}
+    final_obs = {
+        'trans_action_indicies': trans_indicies,
+        'rot_grip_action_indicies': rot_grip_indicies,
+        'gripper_pose': obs_tp1.gripper_pose,
+        'lang_goal': np.array([f"{description}-frame_{frame_idx}-kp_{episode_keypoint}"], dtype=object),
+        'gripper_state': np.concatenate((obs.gripper_pose, # NOTE: Somehow this is not the initial obs? weird way it is stored in replaybuffer
+                                         [float(initial_obs.gripper_open)])),
+        'object_state': target_object,
+    }
+
+    others.update(final_obs)
+    others.update(obs_dict)
+
+    timeout = False
+    replay.add(action, reward, is_terminal, timeout, **others)
+
+    obs = obs_tp1
+
+    # final step
+    if is_terminal:
+        obs_dict_tp1 = extract_obs(obs_tp1, cameras, t=kf_index + 1, prev_action=prev_action)
+        obs_dict_tp1['lang_goal_embs'] = lang_embs[0].float().detach().cpu().numpy()
+
+        obs_dict_tp1.pop('wrist_world_to_cam', None)
+        obs_dict_tp1.update(final_obs)
+
+        replay.add_final(**obs_dict_tp1)
+
 def fill_replay(data_path: str,
                 episode_folder: str,
                 replay: ReplayBuffer,
@@ -271,3 +339,74 @@ def fill_replay(data_path: str,
                 clip_model=clip_model, device=device)
             
     print('Replay filled with demos.')
+
+def uniform_fill_replay(data_path: str,
+                        episode_folder: str,
+                        replay: ReplayBuffer,
+                        # start_idx: int,
+                        # num_demos: int,
+                        d_indexes: List[int],
+                        demo_augmentation: bool,
+                        demo_augmentation_every_n: int,
+                        cameras: List[str],
+                        rlbench_scene_bounds: List[float],  # AKA: DEPTH0_BOUNDS
+                        voxel_sizes: List[int],
+                        rotation_resolution: int,
+                        crop_augmentation: bool,
+                        depth_scale,
+                        stopping_delta: float,
+                        target_obj_keypoint: bool = False,
+                        target_obj_use_last_kp: bool = False,
+                        target_obj_is_avail: bool = False,
+                        clip_model = None,
+                        device = 'cpu'):
+    print('Filling replay unformly ...')
+    for d_idx in d_indexes: #range(start_idx, start_idx+num_demos):
+        print("Filling demo %d" % d_idx)
+        demo = get_stored_demo(data_path=data_path,
+                               index=d_idx,
+                               cameras=cameras,
+                               depth_scale=depth_scale)
+
+        # get language goal from diskeach
+        varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
+        with open(varation_descs_pkl_file, 'rb') as f:
+          descs = pickle.load(f)
+
+        # extract keypoints
+        # episode_keypoints = _keypoint_discovery(demo, d_idx, stopping_delta) # NOTE: Manually defined keypoints - unused here
+        episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
+        
+        # extract (potential) target object locations NOTE: assumed - closed gripper is object location
+        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
+
+        num_samples = 5
+        prev_keypoint = 0
+        is_terminal = False
+        
+        for i, episode_keypoint in enumerate(episode_keypoints):
+             
+             if (i == len(episode_keypoints) - 1): # Last checkpoint reached
+                  is_terminal = True
+             
+             # Uniformly create samples between keypoints
+             samples = np.linspace(prev_keypoint, episode_keypoint, num=num_samples, endpoint=False, dtype=int)
+            
+            # Loop through samples inbetween keypoints
+             for sample in samples:
+                  
+                  # Get the observation and task description
+                  obs = demo[sample]
+                  desc = descs[0]
+                  
+                  _add_keypoint_to_replay_uniform(
+                       replay,
+                       obs,
+                       demo, episode_keypoint,
+                       episode_target_object[sample], #TODO - new check
+                       cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
+                       clip_model=clip_model, device=device,
+                       kf_index=i, is_terminal=is_terminal, frame_idx=sample) # New items
+                  
+             prev_keypoint = episode_keypoint
+    print('Replay uniformly filled with demos .')

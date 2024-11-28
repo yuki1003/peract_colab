@@ -49,6 +49,10 @@ def _keypoint_discovery(demo: Demo,
     if len(episode_keypoints) > 1 and (episode_keypoints[-1] - 1) == \
             episode_keypoints[-2]:
         episode_keypoints.pop(-2)
+    if len(episode_keypoints) >= 4: # NOTE: We don't need back part from HandoverSim, so remove last key
+        print("Removing last keypoint: Don't need retract part from HandoverSim")
+        episode_keypoints.pop(-1)
+    episode_keypoints.pop(1) # Remove the 2nd stage (gripper @ object, but gripper still open) NOTE: Might need location between 1st and 2nd stage
     if debug:
         print('Found %d keypoints.' % len(episode_keypoints), episode_keypoints)
     return episode_keypoints
