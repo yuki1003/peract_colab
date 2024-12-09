@@ -3,7 +3,7 @@ from rlbench.backend.observation import Observation
 
 
 REMOVE_KEYS = ['joint_velocities', 'joint_positions', 'joint_forces',
-               'gripper_open', 'gripper_pose',
+               'gripper_open',# 'gripper_pose',
                'gripper_joint_positions', 'gripper_touch_forces',
                'task_low_dim_state', 'misc']
 
@@ -86,7 +86,7 @@ def extract_obs(obs: Observation,
                     for k, v in obs_dict.items()}
     else:
         # add extra dim to depth data
-        obs_dict = {k: v if v.ndim == 3 else np.expand_dims(v, -1)
+        obs_dict = {k: v if type(v) != bool and v.ndim == 3 else np.expand_dims(v, -1)
                     for k, v in obs_dict.items()}
     obs_dict['low_dim_state'] = np.array(robot_state, dtype=np.float32)
 

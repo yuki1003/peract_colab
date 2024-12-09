@@ -248,7 +248,7 @@ def get_gripper_render_pose(voxel_scale, scene_bound_origin, continuous_trans, c
 	# finger tip to gripper offset
 	offset = np.array([[1, 0, 0, 0],
 	                   [0, 1, 0, 0],
-	                   [0, 0, 1, 0.1*voxel_scale],
+	                   [0, 0, 1, 0.0*voxel_scale],
 	                   [0, 0, 0, 1]])
 
 

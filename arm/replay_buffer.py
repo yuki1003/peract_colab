@@ -9,7 +9,7 @@ import torch
 import clip
 
 import arm.utils as utils
-from arm.demo import _keypoint_discovery, _target_object_discovery
+from arm.demo import _keypoint_discovery, _target_object_discovery, _keypoint_discovery_available
 
 from rlbench.backend.utils import extract_obs
 from rlbench.backend.observation import Observation
@@ -155,6 +155,8 @@ def _add_keypoints_to_replay(
         voxel_sizes: List[int],
         rotation_resolution: int,
         crop_augmentation: bool,
+        episode_index: int,
+        frame_idx: int,
         description: str = '',
         clip_model = None,
         device = 'cpu'):
@@ -185,7 +187,7 @@ def _add_keypoints_to_replay(
             'trans_action_indicies': trans_indicies,
             'rot_grip_action_indicies': rot_grip_indicies,
             'gripper_pose': obs_tp1.gripper_pose,
-            'lang_goal': np.array([description], dtype=object),
+            'lang_goal': np.array([f"{description}-episode_{episode_index}-frame_{frame_idx}-kp_{keypoint}"], dtype=object),
             'gripper_state': np.concatenate((obs.gripper_pose, # NOTE: Somehow this is not the initial obs? weird way it is stored in replaybuffer
                                              [float(initial_obs.gripper_open)])),
             'object_state': target_object,
@@ -208,6 +210,74 @@ def _add_keypoints_to_replay(
 
     replay.add_final(**obs_dict_tp1)
 
+def fill_replay(data_path: str,
+                episode_folder: str,
+                replay: ReplayBuffer,
+                # start_idx: int,
+                # num_demos: int,
+                d_indexes: List[int],
+                demo_augmentation: bool,
+                demo_augmentation_every_n: int,
+                cameras: List[str],
+                rlbench_scene_bounds: List[float],  # AKA: DEPTH0_BOUNDS
+                voxel_sizes: List[int],
+                rotation_resolution: int,
+                crop_augmentation: bool,
+                depth_scale,
+                approach_distance: float,
+                stopping_delta,
+                target_obj_keypoint: bool = False,
+                target_obj_use_last_kp: bool = False,
+                target_obj_is_avail: bool = False,
+                clip_model = None,
+                device = 'cpu'):
+    print('Filling replay ...')
+    for d_idx in d_indexes: #range(start_idx, start_idx+num_demos): # Loops through expert demos
+        print("Filling demo %d" % d_idx)
+        demo = get_stored_demo(data_path=data_path,
+                                index=d_idx,
+                               cameras=cameras,
+                               depth_scale=depth_scale) # Single episode demo
+
+        # get language goal from disk
+        varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
+        with open(varation_descs_pkl_file, 'rb') as f:
+            descs = pickle.load(f)
+
+        # extract keypoints
+        # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
+
+        # extract (potential) target object locations NOTE: assumed - closed gripper is object location
+        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
+        
+        for i, (obs, obs_episode_target_object) in enumerate(zip(demo,episode_target_object)): # Loop through frames of demo
+            if not demo_augmentation and i > 0:
+                break
+            if i % demo_augmentation_every_n != 0: # choose only every n-th frame
+                continue
+            
+            # obs = demo[i] # Get the observation at i-th frame
+            desc = descs[0]
+            target_object = episode_target_object[i]
+
+            # if our starting point is past one of the keypoints, then remove it
+            while len(episode_keypoints) > 0 and i >= episode_keypoints[0]: # Key-point discovered and frame beyond 1st-keypoint
+                episode_keypoints = episode_keypoints[1:] # Remove keypoint
+            if len(episode_keypoints) == 0: # No episode key-points discovered
+                break
+            print(i, episode_keypoints)
+            _add_keypoints_to_replay(
+                replay, # Where to store
+                obs, # Current observation (i.e. data-X)
+                demo, episode_keypoints, # (i.e. data-Y)
+                target_object,
+                cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
+                clip_model=clip_model, device=device,
+                episode_index=d_idx, frame_idx=i) # New items)
+            
+    print('Replay filled with demos.')
+
 # add individual data points to replay
 def _add_keypoint_to_replay_uniform(
         replay: ReplayBuffer,
@@ -220,6 +290,7 @@ def _add_keypoint_to_replay_uniform(
         voxel_sizes: List[int],
         rotation_resolution: int,
         crop_augmentation: bool,
+        episode_index: int,
         kf_index: int,
         is_terminal: bool,
         frame_idx: int,
@@ -252,7 +323,7 @@ def _add_keypoint_to_replay_uniform(
         'trans_action_indicies': trans_indicies,
         'rot_grip_action_indicies': rot_grip_indicies,
         'gripper_pose': obs_tp1.gripper_pose,
-        'lang_goal': np.array([f"{description}-frame_{frame_idx}-kp_{episode_keypoint}"], dtype=object),
+        'lang_goal': np.array([f"{description}-episode_{episode_index}-frame_{frame_idx}-kp_{episode_keypoint}"], dtype=object),
         'gripper_state': np.concatenate((obs.gripper_pose, # NOTE: Somehow this is not the initial obs? weird way it is stored in replaybuffer
                                          [float(initial_obs.gripper_open)])),
         'object_state': target_object,
@@ -276,70 +347,6 @@ def _add_keypoint_to_replay_uniform(
 
         replay.add_final(**obs_dict_tp1)
 
-def fill_replay(data_path: str,
-                episode_folder: str,
-                replay: ReplayBuffer,
-                # start_idx: int,
-                # num_demos: int,
-                d_indexes: List[int],
-                demo_augmentation: bool,
-                demo_augmentation_every_n: int,
-                cameras: List[str],
-                rlbench_scene_bounds: List[float],  # AKA: DEPTH0_BOUNDS
-                voxel_sizes: List[int],
-                rotation_resolution: int,
-                crop_augmentation: bool,
-                depth_scale,
-                stopping_delta,
-                target_obj_keypoint: bool = False,
-                target_obj_use_last_kp: bool = False,
-                target_obj_is_avail: bool = False,
-                clip_model = None,
-                device = 'cpu'):
-    print('Filling replay ...')
-    for d_idx in d_indexes: #range(start_idx, start_idx+num_demos): # Loops through expert demos
-        print("Filling demo %d" % d_idx)
-        demo = get_stored_demo(data_path=data_path,
-                               index=d_idx,
-                               cameras=cameras,
-                               depth_scale=depth_scale) # Single episode demo
-
-        # get language goal from disk
-        varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
-        with open(varation_descs_pkl_file, 'rb') as f:
-            descs = pickle.load(f)
-
-        # extract keypoints
-        episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
-
-        # extract (potential) target object locations NOTE: assumed - closed gripper is object location
-        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
-        
-        for i, (obs, obs_episode_target_object) in enumerate(zip(demo,episode_target_object)): # Loop through frames of demo
-            if not demo_augmentation and i > 0:
-                break
-            if i % demo_augmentation_every_n != 0: # choose only every n-th frame
-                continue
-            
-            # obs = demo[i] # Get the observation at i-th frame
-            desc = descs[0]
-            target_object = episode_target_object[i]
-
-            # if our starting point is past one of the keypoints, then remove it
-            while len(episode_keypoints) > 0 and i >= episode_keypoints[0]: # Key-point discovered and frame beyond 1st-keypoint
-                episode_keypoints = episode_keypoints[1:] # Remove keypoint
-            if len(episode_keypoints) == 0: # No episode key-points discovered
-                break
-            _add_keypoints_to_replay(
-                replay, # Where to store
-                obs, # Current observation (i.e. data-X)
-                demo, episode_keypoints, # (i.e. data-Y)
-                target_object,
-                cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
-                clip_model=clip_model, device=device)
-            
-    print('Replay filled with demos.')
-
 def uniform_fill_replay(data_path: str,
                         episode_folder: str,
                         replay: ReplayBuffer,
@@ -354,6 +361,7 @@ def uniform_fill_replay(data_path: str,
                         rotation_resolution: int,
                         crop_augmentation: bool,
                         depth_scale,
+                        approach_distance: float,
                         stopping_delta: float,
                         target_obj_keypoint: bool = False,
                         target_obj_use_last_kp: bool = False,
@@ -375,7 +383,8 @@ def uniform_fill_replay(data_path: str,
 
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, d_idx, stopping_delta) # NOTE: Manually defined keypoints - unused here
-        episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
+        # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
         
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
         episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
@@ -406,7 +415,7 @@ def uniform_fill_replay(data_path: str,
                        episode_target_object[sample], #TODO - new check
                        cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
                        clip_model=clip_model, device=device,
-                       kf_index=i, is_terminal=is_terminal, frame_idx=sample) # New items
+                       episode_index=d_idx, kf_index=i, is_terminal=is_terminal, frame_idx=sample) # New items
                   
              prev_keypoint = episode_keypoint
     print('Replay uniformly filled with demos .')

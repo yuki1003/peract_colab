@@ -5,13 +5,16 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+import clip
+
 import transformers
 
 from agent.q_function import QFunction
-from agent.utils import _preprocess_inputs, pcd_bbox
+from agent.utils import _norm_rgb, _point_cloud_from_depth_and_camera_params, _preprocess_inputs, pcd_bbox
 from agent.voxel_grid import VoxelGrid
 
 from arm.optim.lamb import Lamb
+from arm.replay_buffer import _clip_encode_text
 from arm.utils import discrete_euler_to_quaternion, stack_on_channel
 from arm.augmentation import apply_se3_augmentation, perturb_se3
 
@@ -64,62 +67,106 @@ class PerceiverActorAgent():
 
         self._cross_entropy_loss = nn.CrossEntropyLoss(reduction='none')
 
-    def build(self, training: bool, device: torch.device = None):
+    def build(self, training: bool, device: torch.device = None, language_goal = None):
         self._training = training
         self._device = device
 
-        vox_grid = VoxelGrid(
+        self._vox_grid = VoxelGrid(
             coord_bounds=self._coordinate_bounds,
             voxel_size=self._voxel_size,
-            device=device,
+            device=self._device,
             batch_size=self._batch_size,
             feature_size=self._voxel_feature_size,
             max_num_coords=np.prod([self._image_resolution[0], self._image_resolution[1]]) * len(self._camera_names),
         )
-        self._vox_grid = vox_grid
 
         self._q = QFunction(self._perceiver_encoder,
-                            vox_grid,
+                            self._vox_grid,
                             self._rotation_resolution,
-                            device,
-                            training).to(device).train(training)
+                            self._device,
+                            training).to(self._device).train(training)
 
         self._coordinate_bounds = torch.tensor(self._coordinate_bounds,
-                                               device=device).unsqueeze(0)
+                                               device=self._device).unsqueeze(0)
 
-        if self._optimizer_type == 'lamb':
-            # From: https://github.com/cybertronai/pytorch-lamb/blob/master/pytorch_lamb/lamb.py
-            self._optimizer = Lamb(
-                self._q.parameters(),
-                lr=self._lr,
-                weight_decay=self._lambda_weight_l2,
-                betas=(0.9, 0.999),
-                adam=False,
-            )
-        elif self._optimizer_type == 'adam':
-            self._optimizer = torch.optim.Adam(
-                self._q.parameters(),
-                lr=self._lr,
-                weight_decay=self._lambda_weight_l2,
-            )
+        if self._training:
+            if self._optimizer_type == 'lamb':
+                # From: https://github.com/cybertronai/pytorch-lamb/blob/master/pytorch_lamb/lamb.py
+                self._optimizer = Lamb(
+                    self._q.parameters(),
+                    lr=self._lr,
+                    weight_decay=self._lambda_weight_l2,
+                    betas=(0.9, 0.999),
+                    adam=False,
+                )
+            elif self._optimizer_type == 'adam':
+                self._optimizer = torch.optim.Adam(
+                    self._q.parameters(),
+                    lr=self._lr,
+                    weight_decay=self._lambda_weight_l2,
+                )
+            else:
+                raise Exception('Unknown optimizer')
+            
+            # learning rate scheduler
+            if self._lr_scheduler:
+                self._scheduler = transformers.get_cosine_with_hard_restarts_schedule_with_warmup(
+                    self._optimizer,
+                    num_warmup_steps=self._num_warmup_steps,
+                    num_training_steps=self._training_iterations,
+                    num_cycles=self._num_cycles,
+                )
+
         else:
-            raise Exception('Unknown optimizer')
+            for param in self._q.parameters():
+                param.requires_grad = False
+
+            if language_goal:
+                self._language_goal_embeddings = self.set_language_goal(language_goal)
+            else:
+                print("Language goal is not set. Use .set_language_goal() to set language goal")
+
+            self._vox_grid.to(self._device)
+            self._q.to(self._device)
+
+    def set_language_goal(self, language_goal: str):
+
+        # load CLIP for encoding language goals during evaluation
+        language_tokens = clip.tokenize([language_goal]).numpy()
+        language_tokens_tensor = torch.from_numpy(language_tokens).to(self._device)
         
-        # TODO: Add learning rate
-        # learning rate scheduler
-        if self._lr_scheduler:
-            self._scheduler = transformers.get_cosine_with_hard_restarts_schedule_with_warmup(
-                self._optimizer,
-                num_warmup_steps=self._num_warmup_steps,
-                num_training_steps=self._training_iterations,
-                num_cycles=self._num_cycles,
-            )
-        else:
-            self._scheduler = None
+        clip_model, _ = clip.load("RN50", device=self._device) # CLIP-ResNet50
+        _, lang_embs = _clip_encode_text(clip_model, language_tokens_tensor)
+        del clip_model
 
-    def _softmax_q(self, q):
+        language_goal_embeddings = lang_embs.float().detach()
+
+        return language_goal_embeddings
+        
+
+    def _softmax_q_trans(self, q):
         q_shape = q.shape
         return F.softmax(q.reshape(q_shape[0], -1), dim=1).reshape(q_shape)
+    
+    def _softmax_q_rot_grip(self, q_rot_grip):
+        q_rot_x_flat = q_rot_grip[:, 0*self._num_rotation_classes: 1*self._num_rotation_classes]
+        q_rot_y_flat = q_rot_grip[:, 1*self._num_rotation_classes: 2*self._num_rotation_classes]
+        q_rot_z_flat = q_rot_grip[:, 2*self._num_rotation_classes: 3*self._num_rotation_classes]
+        q_grip_flat  = q_rot_grip[:, 3*self._num_rotation_classes:]
+
+        q_rot_x_flat_softmax = F.softmax(q_rot_x_flat, dim=1)
+        q_rot_y_flat_softmax = F.softmax(q_rot_y_flat, dim=1)
+        q_rot_z_flat_softmax = F.softmax(q_rot_z_flat, dim=1)
+        q_grip_flat_softmax = F.softmax(q_grip_flat, dim=1)
+
+        return torch.cat([q_rot_x_flat_softmax,
+                          q_rot_y_flat_softmax,
+                          q_rot_z_flat_softmax,
+                          q_grip_flat_softmax], dim=1)
+
+    def _softmax_ignore_collision(self, q_collision):
+        q_collision_softmax = F.softmax(q_collision, dim=1)
+        return q_collision_softmax
 
     def _get_one_hot_expert_actions(self,  # You don't really need this function since GT labels are already in the right format. This is some leftover code from my experiments with label smoothing.
                                     batch_size,
@@ -278,7 +325,7 @@ class PerceiverActorAgent():
             'rot_loss': rot_grip_loss.mean().detach().cpu().numpy(),
             'col_loss': collision_loss.mean().detach().cpu().numpy(),
             'voxel_grid': voxel_grid,
-            'q_trans': self._softmax_q(q_trans),
+            'q_trans': self._softmax_q_trans(q_trans),
             'pred_action': {
                 'trans': coords_indicies,
                 'continuous_trans': continuous_trans,
@@ -290,46 +337,105 @@ class PerceiverActorAgent():
             }
         }
     
-    def forward(self, replay_sample: dict): # Replace by obs
+    def forward(self, observation, timestep):
+        """
+        Processes an observation for inference by preparing RGB and point cloud data 
+        and constructing inputs for the model.
 
-        raise NotImplementedError
-        
+        Args:
+            observation (dict): 
+                A dictionary containing observation data with the following keys:
+                - "{camera_name}_rgb": RGB images from each camera (shape: [C, H, W]). E.g. (3, 128, 128)
+                - "{camera_name}_depth": Depth maps from each camera (shape: [1, H, W]). E.g. (1, 128, 128)
+                - "{camera_name}_camera_extrinsics": Camera extrinsic parameters (4x4 matrix).
+                - "{camera_name}_camera_intrinsics": Camera intrinsic parameters (3x3 matrix).
+                - "gripper_open": Whether the gripper is open (float or bool).
+                - "gripper_joint_positions": Joint positions of the gripper (array of floats).
+            timestep (int): 
+                Current timestep in the episode (0-indexed).
+        """
+
+        for camera_name in self._camera_names:
+            # Expand dimensions for batch processing
+            observation[f"{camera_name}_rgb"] = np.expand_dims(observation[f"{camera_name}_rgb"], axis=0)
+            # print(observation[f"{camera_name}_depth"])
+            # Compute point cloud from depth and camera parameters
+            point_cloud = _point_cloud_from_depth_and_camera_params(
+                observation[f"{camera_name}_depth"][0],
+                observation[f"{camera_name}_camera_extrinsics"],
+                observation[f"{camera_name}_camera_intrinsics"]
+            )
+            observation[f"{camera_name}_point_cloud"] = np.expand_dims(point_cloud, axis=0).transpose(0, 3, 1, 2)
+
+        # Convert to torch tensors
+        obs_dict = {k: torch.from_numpy(v.copy()) if isinstance(v, np.ndarray) else v for k, v in observation.items()}
+
+        # Inputs: Proprio
+        episode_length = 10  # NOTE: Adjust or parameterize if needed
+        normalized_time = (1.0 - (timestep / float(episode_length - 1))) * 2.0 - 1.0
+
+        proprio_input = np.array([obs_dict["gripper_open"], *obs_dict["gripper_joint_positions"], normalized_time])
+        proprio = torch.from_numpy(proprio_input[None]).to(self._device).float()
+
+        # Put on Device
+        obs_dict = {k: v.to(self._device) for k, v in obs_dict.items() if type(v) == torch.Tensor}
+
+        # Inputs: obs and pcd
+        obs, pcd = [], []
+        for n in self._camera_names:
+            rgb_n = obs_dict['%s_rgb' % n].float()
+            pcd_n = obs_dict['%s_point_cloud' % n].float()
+
+            rgb_n = _norm_rgb(rgb_n)
+
+            obs.append([rgb_n, pcd_n]) # obs contains both rgb and pointcloud (used in ARM for other baselines)
+            pcd.append(pcd_n) # only pointcloud
+
         # metric scene bounds
         bounds = self._coordinate_bounds
 
-        # inputs
-        proprio = stack_on_channel(replay_sample['low_dim_state']) # TODO: Can be replaced by {gripper_open, left_finger_joint, right_finger_joint, timestep} (we need from simulation and panda)
-        obs, pcd = _preprocess_inputs(replay_sample, self._camera_names) # This would be the observation
-        lang_goal_embs = replay_sample['lang_goal_embs'][:, -1].float() # This can be a static thing when initialized
-
-        # Q function TODO: I think forward of Qfunction
-        q_trans, rot_grip_q, collision_q, voxel_grid \
-            = self._q(obs, # NOTE: Only used for batch size (this should be only 1)
+        # Inference - forward of Qfunction
+        q_trans, q_rot_grip, collision_q, voxel_grid \
+            = self._q(obs,
                       proprio, # Cehck above
                       pcd, # This is the input
-                      lang_goal_embs, # Static
+                      self._language_goal_embeddings, # Static
                       bounds) # Set before
         
-        # choose best action through argmax
+        # softmax Q predictions Found
+        # print("Before softmax:", q_trans)
+        q_trans = self._softmax_q_trans(q_trans)
+        rot_grip_q =  self._softmax_q_rot_grip(q_rot_grip) if q_rot_grip is not None else q_rot_grip
+        q_ignore_collisions = self._softmax_ignore_collision(collision_q) \
+            if collision_q is not None else collision_q
+        # print("After softmax:", q_trans)
+
+        # argmax Q predictions
         coords_indicies, rot_and_grip_indicies, ignore_collision_indicies = self._q.choose_highest_action(q_trans,
                                                                                                           rot_grip_q,
-                                                                                                          collision_q)
+                                                                                                          q_ignore_collisions)
 
         # discrete to continuous translation action
+        # print(coords_indicies)
         res = (bounds[:, 3:] - bounds[:, :3]) / self._voxel_size
         continuous_trans = bounds[:, :3] + res * coords_indicies.int() + res / 2
+        # print(res, bounds, self._voxel_size)
+        # print(continuous_trans)
+        continuous_trans = continuous_trans[0].cpu().numpy()
         
         continuous_quat = discrete_euler_to_quaternion(rot_and_grip_indicies[0][:3].detach().cpu().numpy(),
                                                        resolution=self._rotation_resolution)
         gripper_open = bool(rot_and_grip_indicies[0][-1].detach().cpu().numpy())
         ignore_collision = bool(ignore_collision_indicies[0][0].detach().cpu().numpy()) # Check if this is necessary
-        return (continuous_trans, continuous_quat, gripper_open)
+
+        return (continuous_trans, continuous_quat, gripper_open), (voxel_grid, coords_indicies, rot_and_grip_indicies, gripper_open)
 
     def load_weights(self, savedir: str):
         device = self._device if not self._training else torch.device('cuda:%d' % self._device)
-        weight_file = os.path.join(savedir, '%s.pt' % self._name)
-        state_dict = torch.load(weight_file, map_location=device)
+        weight_file = os.path.join(savedir, 'peract_agent.pt')
+        state_dict = torch.load(weight_file, map_location=device, weights_only=True)
 
+        # load only keys that are in the current model
         merged_state_dict = self._q.state_dict()
         for k, v in state_dict.items():
             if not self._training:
@@ -339,14 +445,6 @@ class PerceiverActorAgent():
             else:
                 if '_voxelizer' not in k:
                     print("key %s not found in checkpoint" % k)
-        if not self._training:
-            # reshape voxelizer weights
-            b = merged_state_dict['_voxelizer._ones_max_coords'].shape[0]
-            merged_state_dict['_voxelizer._ones_max_coords'] = merged_state_dict['_voxelizer._ones_max_coords'][0:1]
-            flat_shape = merged_state_dict['_voxelizer._flat_output'].shape[0]
-            merged_state_dict['_voxelizer._flat_output'] = merged_state_dict['_voxelizer._flat_output'][0:flat_shape // b]
-            merged_state_dict['_voxelizer._tiled_batch_indices'] = merged_state_dict['_voxelizer._tiled_batch_indices'][0:1]
-            merged_state_dict['_voxelizer._index_grid'] = merged_state_dict['_voxelizer._index_grid'][0:1]
         self._q.load_state_dict(merged_state_dict)
         print("loaded weights from %s" % weight_file)
 

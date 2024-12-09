@@ -1,5 +1,8 @@
 import numpy as np
 import torch
+
+from pyrep.objects import VisionSensor
+
 from arm.utils import stack_on_channel
 from arm.utils import point_to_voxel_index, voxel_index_to_point
 from arm.augmentation import apply_se3_augmentation, perturb_se3, quaternion_to_matrix
@@ -18,6 +21,13 @@ def _preprocess_inputs(replay_sample, cameras):
         obs.append([rgb, pcd]) # obs contains both rgb and pointcloud (used in ARM for other baselines)
         pcds.append(pcd) # only pointcloud
     return obs, pcds
+
+def _point_cloud_from_depth_and_camera_params(depth, camera_extrinsics, camera_intrinsics):
+    point_cloud = VisionSensor.pointcloud_from_depth_and_camera_params(
+        depth,
+        camera_extrinsics,
+        camera_intrinsics)
+    return point_cloud
 
 def pcd_bbox(pose, margin, voxel_size, bounds, bs, device="cpu"):
 
