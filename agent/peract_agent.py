@@ -306,7 +306,7 @@ class PerceiverActorAgent():
                 self._scheduler.step()
                 learning_rate = self._scheduler.get_last_lr()[0]
 
-            total_loss = total_loss.item()
+        total_loss = total_loss.item()
 
         
         # choose best action through argmax
