@@ -248,6 +248,7 @@ def fill_replay(data_path: str,
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
         episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
+        episode_keypoints.pop(-1)
         episode_keypoints = episode_keypoints if use_approach else episode_keypoints[-1]
 
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
@@ -388,6 +389,7 @@ def uniform_fill_replay(data_path: str,
         # episode_keypoints = _keypoint_discovery(demo, d_idx, stopping_delta) # NOTE: Manually defined keypoints - unused here
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
         episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
+        episode_keypoints.pop(-1)
         episode_keypoints = episode_keypoints if use_approach else episode_keypoints[-1]
         
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
