@@ -109,4 +109,6 @@ def extract_obs(obs: Observation,
     obs.joint_positions = joint_pos
     obs.gripper_pose = grip_pose
 
+    obs_dict["gripper_pose"] = grip_pose
+
     return obs_dict

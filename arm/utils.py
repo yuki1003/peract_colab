@@ -242,6 +242,57 @@ def visualise_voxel(voxel_grid: np.ndarray,
             s.add(gripper_mesh) 
         color, depth = r.render(s)
         return color.copy()
+    
+def visualise_voxel_video(voxel_grid: np.ndarray,
+                    q_attention: np.ndarray = None,
+                    highlight_coordinate: np.ndarray = None,
+                    highlight_gt_coordinate: np.ndarray = None,
+                    highlight_alpha: float = 1.0,
+                    rotation_amount: float = 0.0,
+                    show: bool = False,
+                    voxel_size: float = 0.1,
+                    offscreen_renderer: pyrender.OffscreenRenderer = None,
+                    show_bb: bool = False,
+                    alpha: float = 0.5,
+                    render_gripper=False,
+                    gripper_pose=None,
+                    gripper_mesh_scale=1.0,
+                    perspective: bool = True):
+    scene = create_voxel_scene(
+        voxel_grid, q_attention, highlight_coordinate, highlight_gt_coordinate,
+        highlight_alpha, voxel_size,
+        show_bb, alpha)
+    if show:
+        scene.show()
+    else:
+        r = offscreen_renderer or pyrender.OffscreenRenderer(
+            viewport_width=1920, viewport_height=1080, point_size=1.0)
+        s = _from_trimesh_scene(
+            scene, ambient_light=[0.8, 0.8, 0.8],
+            bg_color=[1.0, 1.0, 1.0])
+        if perspective:
+            cam = pyrender.PerspectiveCamera(
+                yfov=np.pi / 4.0, 
+                aspectRatio=r.viewport_width/r.viewport_height)
+        else:
+            cam = pyrender.OrthographicCamera(
+                xmag=1.0, ymag=1.0)
+        p = _compute_initial_camera_pose(s)
+        t = Trackball(p, (r.viewport_width, r.viewport_height), s.scale, s.centroid)
+        if not perspective:
+            t.rotate(np.deg2rad(45), np.array([0.0, 1.0, 0.0]))
+        t.rotate(rotation_amount, np.array([0.0, 0.0, 1.0]))
+        s.add(cam, pose=t.pose)
+
+        if render_gripper:
+            gripper_trimesh = trimesh.load('peract_colab/meshes/hand.dae', force='mesh')
+            gripper_trimesh.vertices *= gripper_mesh_scale
+            radii = np.linalg.norm(gripper_trimesh.vertices - gripper_trimesh.center_mass, axis=1)
+            gripper_trimesh.visual.vertex_colors = trimesh.visual.interpolate(radii * gripper_mesh_scale, color_map='winter')
+            gripper_mesh = pyrender.Mesh.from_trimesh(gripper_trimesh, poses=gripper_pose, smooth=False)
+            s.add(gripper_mesh) 
+        color, depth = r.render(s)
+        return color.copy()
 
 
 def get_gripper_render_pose(voxel_scale, scene_bound_origin, continuous_trans, continuous_quat):
