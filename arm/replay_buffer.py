@@ -247,7 +247,9 @@ def fill_replay(data_path: str,
 
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
-        episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance) # NOTE: Should only return 2 keypoints
+        if len(episode_keypoints) != 2:
+            raise ValueError("Expected only 2 keypoints for handoversim. Check your data or keypoint discovery!")
         episode_keypoints = episode_keypoints if use_approach else [episode_keypoints[-1]]
 
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
@@ -387,7 +389,9 @@ def uniform_fill_replay(data_path: str,
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, d_idx, stopping_delta) # NOTE: Manually defined keypoints - unused here
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
-        episode_keypoints = _keypoint_discovery_available(demo, approach_distance)
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance) # NOTE: Should only return 2 keypoints
+        if len(episode_keypoints) != 2:
+            raise ValueError("Expected only 2 keypoints for handoversim. Check your data or keypoint discovery!")
         episode_keypoints = episode_keypoints if use_approach else [episode_keypoints[-1]]
         
         # extract (potential) target object locations NOTE: assumed - closed gripper is object location
@@ -465,9 +469,11 @@ def fill_replay_copy_with_crop_from_approach(data_path: str,
 
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
-        episode_keypoints = _keypoint_discovery_available(demo, approach_distance, debug=False)
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance, debug=False) # NOTE: Should only return 2 keypoints
         if not use_approach:
             raise ValueError("For using this fill replay setting, 'use_approach' must be set to True.")
+        if len(episode_keypoints) != 2:
+            raise ValueError("Expected only 2 keypoints for handoversim. Check your data or keypoint discovery!")
         episode_keypoints = episode_keypoints if use_approach else [episode_keypoints[-1]] # NOTE: Here we require 2 keyframes, but later we will stop filling at approach keyframe
         print(f'Found {len(episode_keypoints)} keypoints: {episode_keypoints}. Using keypoint:{episode_keypoints[-1]} and sampling till {episode_keypoints[0]}')
 
@@ -497,6 +503,80 @@ def fill_replay_copy_with_crop_from_approach(data_path: str,
                 replay, # Where to store
                 obs, # Current observation (i.e. data-X)
                 demo, [episode_keypoints[-1]], # (i.e. data-Y) # NOTE: Only use last keypoint 'grasp'
+                target_object,
+                cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
+                clip_model=clip_model, device=device,
+                episode_index=d_idx, frame_idx=i) # New items)
+            
+    print('Replay filled with demos.')
+
+def fill_replay_only_approach_test(data_path: str,
+                episode_folder: str,
+                replay: ReplayBuffer,
+                # start_idx: int,
+                # num_demos: int,
+                d_indexes: List[int],
+                demo_augmentation: bool,
+                demo_augmentation_every_n: int,
+                cameras: List[str],
+                rlbench_scene_bounds: List[float],  # AKA: DEPTH0_BOUNDS
+                voxel_sizes: List[int],
+                rotation_resolution: int,
+                crop_augmentation: bool,
+                depth_scale,
+                use_approach: bool,
+                approach_distance: float,
+                stopping_delta,
+                target_obj_keypoint: bool = False,
+                target_obj_use_last_kp: bool = False,
+                target_obj_is_avail: bool = False,
+                clip_model = None,
+                device = 'cpu'):
+    print('Filling replay ...')
+    for d_idx in d_indexes: #range(start_idx, start_idx+num_demos): # Loops through expert demos
+        print("Filling demo %d" % d_idx)
+        demo = get_stored_demo(data_path=data_path,
+                                index=d_idx,
+                               cameras=cameras,
+                               depth_scale=depth_scale) # Single episode demo
+
+        # get language goal from disk
+        varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
+        with open(varation_descs_pkl_file, 'rb') as f:
+            descs = pickle.load(f)
+
+        # extract keypoints
+        # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
+        episode_keypoints = _keypoint_discovery_available(demo, approach_distance) # NOTE: Should only return 2 keypoints
+        if len(episode_keypoints) != 2:
+            raise ValueError("Expected only 2 keypoints for handoversim. Check your data or keypoint discovery!")
+        episode_keypoints = [episode_keypoints[0]] if use_approach else [episode_keypoints[-1]]
+        if not use_approach or len(episode_keypoints) != 1:
+            raise ValueError(f"For only using function with approach test, we expect 1 keypoint, but received {len(episode_keypoints)}.")
+
+        # extract (potential) target object locations NOTE: assumed - closed gripper is object location
+        episode_target_object = _target_object_discovery(demo, keypoints=target_obj_keypoint, stopping_delta=stopping_delta, last_kp=target_obj_use_last_kp, is_available=target_obj_is_avail)
+        
+        for i, (obs, obs_episode_target_object) in enumerate(zip(demo,episode_target_object)): # Loop through frames of demo
+            if not demo_augmentation and i > 0:
+                break
+            if i % demo_augmentation_every_n != 0: # choose only every n-th frame
+                continue
+            
+            # obs = demo[i] # Get the observation at i-th frame
+            desc = descs[0]
+            target_object = episode_target_object[i]
+
+            # if our starting point is past one of the keypoints, then remove it
+            while len(episode_keypoints) > 0 and i >= episode_keypoints[0]: # Key-point discovered and frame beyond 1st-keypoint
+                episode_keypoints = episode_keypoints[1:] # Remove keypoint
+            if len(episode_keypoints) == 0: # No episode key-points discovered
+                break
+            print(i, episode_keypoints)
+            _add_keypoints_to_replay(
+                replay, # Where to store
+                obs, # Current observation (i.e. data-X)
+                demo, episode_keypoints, # (i.e. data-Y)
                 target_object,
                 cameras, rlbench_scene_bounds, voxel_sizes, rotation_resolution, crop_augmentation, description=desc,
                 clip_model=clip_model, device=device,
