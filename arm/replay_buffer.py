@@ -562,7 +562,7 @@ def fill_replay_only_approach_test(data_path: str,
                 break
             if i % demo_augmentation_every_n != 0: # choose only every n-th frame
                 continue
-            if (i//demo_augmentation_every_n) >= (episode_keypoints[0]//demo_augmentation_every_n): # Don't add last sample (too close to keyframe)
+            if (i//demo_augmentation_every_n)+1 >= (episode_keypoints[0]//demo_augmentation_every_n): # Don't add last sample (too close to keyframe)
                 break
             
             # obs = demo[i] # Get the observation at i-th frame
