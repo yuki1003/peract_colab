@@ -428,7 +428,8 @@ class PerceiverActorAgent():
         gripper_open = bool(rot_and_grip_indicies[0][-1].detach().cpu().numpy())
         ignore_collision = bool(ignore_collision_indicies[0][0].detach().cpu().numpy()) # Check if this is necessary
 
-        return (continuous_trans, continuous_quat, gripper_open), (voxel_grid, coords_indicies, rot_and_grip_indicies, gripper_open)
+        return (continuous_trans, continuous_quat, gripper_open, q_trans.max().item(), rot_grip_q.max().item()),    \
+              (voxel_grid, coords_indicies, rot_and_grip_indicies, gripper_open)
 
     def load_weights(self, savedir: str):
         device = self._device if not self._training else torch.device('cuda:%d' % self._device)
