@@ -122,7 +122,7 @@ class PerceiverActorAgent():
                 param.requires_grad = False
 
             if language_goal:
-                self._language_goal_embeddings = self.set_language_goal(language_goal)
+                self.set_language_goal(language_goal)
             else:
                 print("Language goal is not set. Use .set_language_goal() to set language goal")
 
@@ -141,7 +141,7 @@ class PerceiverActorAgent():
 
         language_goal_embeddings = lang_embs.float().detach()
 
-        return language_goal_embeddings
+        self._language_goal_embeddings = language_goal_embeddings
         
 
     def _softmax_q_trans(self, q):
