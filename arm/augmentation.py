@@ -1,3 +1,5 @@
+import sys
+sys.path = [p for p in sys.path if '/peract/' not in p] # Hacky solution
 import functools
 import numpy as np
 import torch

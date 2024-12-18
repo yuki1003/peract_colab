@@ -16,8 +16,6 @@ def build_agent(settings, training=True):
     # SETTINGS
     CAMERAS = settings['cameras']
     RGB_AUGMENTATION = settings['RGB_AUGMENTATION']
-    if not training:
-        BATCH_SIZE = BATCH_SIZE_INFERENCE
 
     perceiver_encoder = PerceiverIO(
         depth=6,

@@ -432,9 +432,9 @@ class PerceiverActorAgent():
               (voxel_grid, coords_indicies, rot_and_grip_indicies, gripper_open)
 
     def load_weights(self, savedir: str):
-        device = self._device if not self._training else torch.device('cuda:%d' % self._device)
+        # device = self._device if not self._training else torch.device('cuda:%d' % self._device)
         weight_file = os.path.join(savedir, 'peract_agent.pt')
-        state_dict = torch.load(weight_file, map_location=device, weights_only=True)
+        state_dict = torch.load(weight_file, map_location=self._device, weights_only=True)
 
         # load only keys that are in the current model
         merged_state_dict = self._q.state_dict()
