@@ -111,8 +111,8 @@ def load_replay_buffer(settings): # Taken from analyse_data.ipynb
             device=device,
             )
     elif FILL_REPLAY_SETTING.lower() == "standard":
-        fill_replay_only_approach_test(
-        # fill_replay(
+        # fill_replay_only_approach_test(
+        fill_replay(
             data_path=train_data_path,
             episode_folder=EPISODE_FOLDER,
             replay=train_replay_buffer,
@@ -186,8 +186,8 @@ def load_replay_buffer(settings): # Taken from analyse_data.ipynb
             device=device,
             )
     elif FILL_REPLAY_SETTING.lower() == "standard":
-        fill_replay_only_approach_test(
-        # fill_replay(
+        # fill_replay_only_approach_test(
+        fill_replay(
             data_path=test_data_path,
             episode_folder=EPISODE_FOLDER,
             replay=test_replay_buffer,
