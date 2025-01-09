@@ -5,10 +5,12 @@ from natsort import natsorted
 
 ## STATIC VALUES USED IN BELOW FUNCTION: SETTING THEM AS GLOBAL FOR FURTHER USE
 #___DATA___
-TASK = 'handing_over_banana'
+TASK = 'handing_over_pudding_box'
 # Data Constants
 WORKSPACE_DIR = os.getcwd()
 DATA_FOLDER = os.path.join(WORKSPACE_DIR, "task_data", "handoversim")
+DATA_FOLDER = "/media/ywatabe/ESD-USB/task_data/handoversim_v4"
+DATA_FOLDER = DATA_FOLDER.replace("/peract_colab", "")
 EPISODES_FOLDER = os.path.join(TASK, "all_variations", "episodes")
 
 EPISODE_FOLDER = 'episode%d'
@@ -37,8 +39,8 @@ SCENE_BOUNDS = [0.11, -0.5, 0.8, 1.11, 0.5, 1.8]  # Must be 1m each
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Training/Validating Settings Constants
-BATCH_SIZE = 1
-TRAINING_ITERATIONS = 30000
+BATCH_SIZE = 2
+TRAINING_ITERATIONS = 7000
 LEARNING_RATE = 0.001
 TRANSFORM_AUGMENTATION = True
 
