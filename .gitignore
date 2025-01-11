@@ -2,4 +2,4 @@
 __pycache__/
 replay_train
 replay_test
-outputs
+outputs*
