@@ -5,23 +5,23 @@ from natsort import natsorted
 
 ## STATIC VALUES USED IN BELOW FUNCTION: SETTING THEM AS GLOBAL FOR FURTHER USE
 #___DATA___
-TASK = 'handing_over_pudding_box'
-# Data Constants
-WORKSPACE_DIR = os.getcwd()
-DATA_FOLDER = os.path.join(WORKSPACE_DIR, "task_data", "handoversim")
-DATA_FOLDER = "/media/ywatabe/ESD-USB/task_data/handoversim_v4"
-DATA_FOLDER = DATA_FOLDER.replace("/peract_colab", "")
-EPISODES_FOLDER = os.path.join(TASK, "all_variations", "episodes")
+# TASK = 'handing_over_pudding_box'
+# # Data Constants
+# WORKSPACE_DIR = os.getcwd()
+# DATA_FOLDER = os.path.join(WORKSPACE_DIR, "task_data", "handoversim_v3")
+# # DATA_FOLDER = "/media/ywatabe/ESD-USB/task_data/handoversim_v3"
+# DATA_FOLDER = DATA_FOLDER.replace("/peract_colab", "")
+# EPISODES_FOLDER = os.path.join(TASK, "all_variations", "episodes")
 
-EPISODE_FOLDER = 'episode%d'
-SETUP = "s1" # Options: "s1"
-train_data_path = os.path.join(DATA_FOLDER, f"train_{SETUP}", EPISODES_FOLDER)
-TRAIN_INDEXES = [int(episode_nr.replace("episode", "")) for episode_nr in natsorted(os.listdir(train_data_path))]
-test_data_path = os.path.join(DATA_FOLDER, f"val_{SETUP}", EPISODES_FOLDER)
-TEST_INDEXES = [int(episode_nr.replace("episode", "")) for episode_nr in natsorted(os.listdir(test_data_path))]
+# EPISODE_FOLDER = 'episode%d'
+# SETUP = "s1" # Options: "s1"
+# train_data_path = os.path.join(DATA_FOLDER, f"train_{SETUP}", EPISODES_FOLDER)
+# TRAIN_INDEXES = [int(episode_nr.replace("episode", "")) for episode_nr in natsorted(os.listdir(train_data_path))]
+# test_data_path = os.path.join(DATA_FOLDER, f"val_{SETUP}", EPISODES_FOLDER)
+# TEST_INDEXES = [int(episode_nr.replace("episode", "")) for episode_nr in natsorted(os.listdir(test_data_path))]
 
-print(f"TRAIN | Total #: {len(TRAIN_INDEXES)}, indices: {TRAIN_INDEXES}")
-print(f"TEST | Total #: {TEST_INDEXES}")
+# print(f"TRAIN | Total #: {len(TRAIN_INDEXES)}, indices: {TRAIN_INDEXES}")
+# print(f"TEST | Total #: {TEST_INDEXES}")
 
 # Replaybuffer related constants
 LOW_DIM_SIZE = 4    # 4 dimensions - proprioception: {gripper_open, left_finger_joint, right_finger_joint, timestep}
