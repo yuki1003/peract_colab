@@ -215,7 +215,7 @@ class PerceiverActorAgent():
     def update(self, step: int, replay_sample: dict, backprop: bool = True) -> dict:
         # sample
         action_trans = replay_sample['trans_action_indicies'][:, -1, :3].int()
-        action_rot_grip = replay_sample['rot_grip_action_indicies'][:, -1].int()
+        action_rot_grip_indicies = replay_sample['rot_grip_action_indicies'][:, -1].int()
         action_ignore_collisions = replay_sample['ignore_collisions'][:, -1].int()
         action_gripper_pose = replay_sample['gripper_pose'][:, -1]
         gripper_pose = replay_sample['gripper_state'][:, -1]
@@ -239,9 +239,9 @@ class PerceiverActorAgent():
 
         # SE(3) augmentation of point clouds and actions
         if backprop and self._transform_augmentation:
-            action_trans, action_rot_grip, pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4 \
+            action_trans, action_rot_grip_indicies, pcd, trans_shift_4x4, rot_shift_4x4, action_gripper_4x4 \
                 = apply_se3_augmentation(pcd,
-                                         action_gripper_pose, action_trans, action_rot_grip,
+                                         action_gripper_pose, action_trans, action_rot_grip_indicies,
                                          bounds,
                                          0,
                                          self._transform_augmentation_xyz, self._transform_augmentation_rpy,
@@ -270,7 +270,7 @@ class PerceiverActorAgent():
         action_rot_y_one_hot, action_rot_z_one_hot, \
         action_grip_one_hot, action_collision_one_hot = self._get_one_hot_expert_actions(bs,
                                                                                          action_trans,
-                                                                                         action_rot_grip,
+                                                                                         action_rot_grip_indicies,
                                                                                          action_ignore_collisions,
                                                                                          device=self._device)
         total_loss = 0.
@@ -327,13 +327,14 @@ class PerceiverActorAgent():
             'voxel_grid': voxel_grid,
             'q_trans': self._softmax_q_trans(q_trans),
             'pred_action': {
-                'trans': coords_indicies,
+                'trans': coords_indicies.detach().cpu().numpy(),
                 'continuous_trans': continuous_trans,
-                'rot_and_grip': rot_and_grip_indicies,
+                'rot_and_grip': rot_and_grip_indicies.detach().cpu().numpy(),
                 'collision': ignore_collision_indicies
             },
             'expert_action': {
-                'action_trans': action_trans
+                'action_trans': action_trans.detach().cpu().numpy(),
+                'rot_and_grip': action_rot_grip_indicies.detach().cpu().numpy()
             }
         }
     
