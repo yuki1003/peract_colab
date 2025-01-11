@@ -67,7 +67,7 @@ def build_agent(settings, training=True):
 
     return peract_agent
 
-def agent_training(settings, peract_agent, train_data_iter, test_data_iter):
+def agent_training(settings, peract_agent, train_data_iter, test_data_iter, WORKSPACE_DIR, TASK):
 
     #___TRAINING___
 

@@ -14,7 +14,10 @@ from yarr.replay_buffer.wrappers.pytorch_replay_buffer import PyTorchReplayBuffe
 from notebook_helpers.constants import * # Load global constant variables from constants.py
 
 
-def load_replay_buffer(settings): # Taken from analyse_data.ipynb
+def load_replay_buffer(settings,
+                       WORKSPACE_DIR, SETUP, EPISODE_FOLDER,
+                       TASK,
+                       train_data_path, test_data_path, TRAIN_INDEXES, TEST_INDEXES): # Taken from analyse_data.ipynb
 
     # SETTINGS
     FILL_REPLAY_SETTING = settings['fill_replay_setting']
