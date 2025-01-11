@@ -142,9 +142,9 @@ def agent_training(settings, peract_agent, train_data_iter, test_data_iter, WORK
                     "rot_loss": test_update_dict['rot_loss'],
                     "col_loss": test_update_dict['col_loss'],
                     "pred_trans_action": test_update_dict['pred_action']['trans'],
-                    "true_trans_action": test_update_dict['expert_Action']['action_trans'],
+                    "true_trans_action": test_update_dict['expert_action']['action_trans'],
                     "pred_rot_action": test_update_dict['pred_action']['rot_and_grip'],
-                    "true_rot_action": test_update_dict['expert_Action']['rot_and_grip'],
+                    "true_rot_action": test_update_dict['expert_action']['rot_and_grip'],
                 }
                 metrics["test"].append(test_metrics)
 
