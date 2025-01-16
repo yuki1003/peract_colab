@@ -1,5 +1,5 @@
 import torch
-from constants import *
+from notebook_helpers.constants import *
 
 # Training/Validating Settings Constants
 BATCH_SIZE = 1
