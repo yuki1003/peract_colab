@@ -39,7 +39,7 @@ SCENE_BOUNDS = [0.11, -0.5, 0.8, 1.11, 0.5, 1.8]  # Must be 1m each
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Training/Validating Settings Constants
-BATCH_SIZE = 2
+BATCH_SIZE = 1 # ANALYSE: 1, TRAINING: 2, INFERENCE: 4-6
 TRAINING_ITERATIONS = 7000
 LEARNING_RATE = 0.001
 TRANSFORM_AUGMENTATION = True
