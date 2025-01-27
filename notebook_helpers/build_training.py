@@ -2,6 +2,7 @@ import time
 from datetime import datetime
 import json
 
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
 
@@ -9,7 +10,7 @@ from agent.perceiver_io import PerceiverIO
 from agent.peract_agent import PerceiverActorAgent
 
 from notebook_helpers.constants import * # Load global constant variables from constants.py
-
+from arm.utils import visualise_voxel
 
 def build_agent(settings, training=True):
 
@@ -131,6 +132,7 @@ def agent_training(settings, peract_agent, train_data_iter, test_data_iter, WORK
 
             if calc_test_loss:
                 batch = next(test_data_iter)
+                lang_goal = batch["lang_goal"]
                 batch = {k: v.to(device) for k, v in batch.items() if type(v) == torch.Tensor}
                 test_update_dict = peract_agent.update(iteration, batch, backprop=False) # Here backprop == False: for evaluation, hence test_loss == total_loss
 
@@ -154,6 +156,24 @@ def agent_training(settings, peract_agent, train_data_iter, test_data_iter, WORK
                         update_dict['total_loss'], update_dict['trans_loss'], update_dict['rot_loss'], update_dict['col_loss'],
                         test_update_dict['total_loss'], test_update_dict['trans_loss'], test_update_dict['rot_loss'], test_update_dict['col_loss'], 
                         elapsed_time))
+                
+                if test_update_dict['trans_loss'] > 15: # Visualize output when training trans loss exceeds 15
+                    print(lang_goal)
+                    fig = plt.figure(figsize=(16, 8))
+                    for i in range(BATCH_SIZE):
+                        vis_voxel_grid = test_update_dict['voxel_grid'][i].cpu().numpy()
+                        vis_trans_coord = test_update_dict['pred_action']['trans'][i]
+                        vis_gt_coord = test_update_dict['expert_action']['action_trans'][i]
+
+                        rendered_img = visualise_voxel(vis_voxel_grid,
+                                                    None,
+                                                    np.expand_dims(vis_trans_coord, axis=0),
+                                                    vis_gt_coord,
+                                                    voxel_size=0.045)
+                        fig.add_subplot(1, 2, i+1)
+                        plt.imshow(rendered_img)
+                    plt.show()
+
             else:
                 print("Iteration: %d/%d | Learning Rate: %f| Train Loss [tot,trans,rot,col]: [%0.2f, %0.2f, %0.2f, %0.2f] | Elapsed Time: %0.2f mins"\
                     % (iteration, TRAINING_ITERATIONS, 
