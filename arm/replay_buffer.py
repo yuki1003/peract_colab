@@ -463,9 +463,18 @@ def fill_replay_copy_with_crop_from_approach(data_path: str,
         flag = False
 
         # get language goal from disk
-        varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
-        with open(varation_descs_pkl_file, 'rb') as f:
-            descs = pickle.load(f)
+        # TASK = MUG. Separate by handle vs. rim
+        TRAIN_INDEXES_mug_handle = [66, 266, 268, 269, 368, 465, 466] 
+        TRAIN_INDEXES_mug_rim = [167, 169, 265, 365, 366, 367, 369, 468, 566, 567, 568, 569, 966, 967, 968]
+        if d_idx in TRAIN_INDEXES_mug_handle:
+            descs = ['handing over mug and grasp handle']
+        elif d_idx in TRAIN_INDEXES_mug_rim:
+            descs = ['handing over mug and grasp rim']
+        else:
+            varation_descs_pkl_file = os.path.join(data_path, episode_folder % d_idx, VARIATION_DESCRIPTIONS_PKL)
+            with open(varation_descs_pkl_file, 'rb') as f:
+                descs = pickle.load(f)
+        print(descs)
 
         # extract keypoints
         # episode_keypoints = _keypoint_discovery(demo, stopping_delta) # Discover keypoints for current demo index
