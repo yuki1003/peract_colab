@@ -1,7 +1,7 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,3"
 
 import torch
-from natsort import natsorted
 
 ## STATIC VALUES USED IN BELOW FUNCTION: SETTING THEM AS GLOBAL FOR FURTHER USE
 #___DATA___
