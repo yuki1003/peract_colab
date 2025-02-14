@@ -1,5 +1,7 @@
+import json
 import os
 import numpy as np
+from scipy.spatial.transform import Rotation as Rot
 
 import torch
 from torch import nn
@@ -372,11 +374,11 @@ class PerceiverActorAgent():
         obs_dict = {k: torch.from_numpy(v.copy()) if isinstance(v, np.ndarray) else v for k, v in observation.items()}
 
         # Inputs: Proprio
-        episode_length = 10  # NOTE: Adjust or parameterize if needed
-        normalized_time = (1.0 - (timestep / float(episode_length - 1))) * 2.0 - 1.0
+        # episode_length = 10  # NOTE: Adjust or parameterize if needed
+        # normalized_time = (1.0 - (timestep / float(episode_length - 1))) * 2.0 - 1.0
 
-        proprio_input = np.array([obs_dict["gripper_open"], *obs_dict["gripper_joint_positions"], normalized_time])
-        proprio = torch.from_numpy(proprio_input[None]).to(self._device).float()
+        proprio_input = np.array([obs_dict["gripper_open"], *obs_dict["gripper_joint_positions"], 1])#normalized_time])
+        proprio = torch.from_numpy(proprio_input).to(self._device).float()# torch.from_numpy(proprio_input[None]).to(self._device).float()
 
         # Put on Device
         obs_dict = {k: v.to(self._device) for k, v in obs_dict.items() if type(v) == torch.Tensor}
